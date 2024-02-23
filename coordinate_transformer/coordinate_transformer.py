@@ -28,6 +28,9 @@ def calculate_homography(frame_nbr, detected_labels, detected_labels_src_pts, de
 
     if update_homography:
         h, mask = cv2.findHomography(detected_labels_src_pts, detected_labels_dst_pts) # Calculate homography matrix
+    else:
+        h = np.array([])
+        mask = None
 
     detected_labels_prev = detected_labels.copy()  # Save current detected keypoint labels for next frame
     detected_labels_src_pts_prev = detected_labels_src_pts.copy()  # Save current detected keypoint coordiantes for next frame
@@ -35,10 +38,10 @@ def calculate_homography(frame_nbr, detected_labels, detected_labels_src_pts, de
     return h, mask, detected_labels_prev, detected_labels_src_pts_prev
 
 
-def transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_track_history, ball_track_dist_thresh, max_track_length):
+def transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_track_history, ball_track_dist_thresh, max_track_length, show_b):
     # Implement coordinate transformation logic here
 
-    # Transform players coordinates from frame plane to tactical map plance using the calculated Homography matrix
+    # Transform players coordinates from frame plan to tactical map plance using the calculated Homography matrix
     pred_dst_pts = []  # Initialize players tactical map coordiantes list
     for pt in detected_ppos_src_pts:  # Loop over players frame coordiantes
         pt = np.append(np.array(pt), np.array([1]), axis=0)  # Covert to homogeneous coordiantes
@@ -47,7 +50,7 @@ def transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_
         pred_dst_pts.append(list(np.transpose(dest_point)[:2]))  # Update players tactical map coordiantes list
     pred_dst_pts = np.array(pred_dst_pts)
 
-    # Transform ball coordinates from frame plane to tactical map plane using the calculated Homography matrix
+    # Transform ball coordinates from frame plan to tactical map plane using the calculated Homography matrix
     if detected_ball_src_pos is not None:
         pt = np.append(np.array(detected_ball_src_pos), np.array([1]), axis=0)
         dest_point = np.matmul(h, np.transpose(pt))
@@ -55,18 +58,20 @@ def transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_
         detected_ball_dst_pos = np.transpose(dest_point)
 
         # Update track ball position history
-        if len(ball_track_history['src']) > 0:
-            if np.linalg.norm(detected_ball_src_pos - ball_track_history['src'][-1]) < ball_track_dist_thresh:
+        if show_b:
+            if len(ball_track_history['src']) > 0:
+                if np.linalg.norm(detected_ball_src_pos - ball_track_history['src'][-1]) < ball_track_dist_thresh:
+                    ball_track_history['src'].append((int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1])))
+                    ball_track_history['dst'].append((int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1])))
+                else:
+                    ball_track_history['src'] = [(int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1]))]
+                    ball_track_history['dst'] = [(int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1]))]
+            else:
                 ball_track_history['src'].append((int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1])))
                 ball_track_history['dst'].append((int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1])))
-            else:
-                ball_track_history['src'] = [(int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1]))]
-                ball_track_history['dst'] = [(int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1]))]
-        else:
-            ball_track_history['src'].append((int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1])))
-            ball_track_history['dst'].append((int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1])))
     # Remove oldest tracked ball postion if track exceedes threshold
     if len(ball_track_history) > max_track_length:
         ball_track_history['src'].pop(0)
         ball_track_history['dst'].pop(0)
+
     return pred_dst_pts, detected_ball_dst_pos, ball_track_history

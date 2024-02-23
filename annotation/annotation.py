@@ -15,7 +15,7 @@ import yaml
 import time
 
 def annotate_frame(annotated_frame, bboxes_p, confs_p, labels_p, obj_palette_list, colors_dic, players_teams_list,
-                   detected_labels_src_pts, pred_dst_pts, labels_dic, detected_ball_src_pos, detected_ball_dst_pos, bboxes_k):
+                   detected_labels_src_pts, pred_dst_pts, labels_dic, detected_ball_src_pos, detected_ball_dst_pos, bboxes_k, tac_map_copy, show_pal, show_k, show_p, h):
     # Implement annotation logic here
 
     ball_color_bgr = (0, 0, 255)  # Color (GBR) for ball annotation on tactical map
@@ -28,54 +28,57 @@ def annotate_frame(annotated_frame, bboxes_p, confs_p, labels_p, obj_palette_lis
         if labels_p[i] == 0:  # Display annotation for detected players (label 0)
 
             # Display extracted color palette for each detected player
-            palette = obj_palette_list[j]  # Get color palette of the detected player
-            for k, c in enumerate(palette):
-                c_bgr = c[::-1]  # Convert color to BGR
-                annotated_frame = cv2.rectangle(annotated_frame,
-                                                (int(bboxes_p[i, 2]) + 3,  # Add color palette annotation on frame
-                                                 int(bboxes_p[i, 1]) + k * palette_box_size),
-                                                (int(bboxes_p[i, 2]) + palette_box_size,
-                                                 int(bboxes_p[i, 1]) + (palette_box_size) * (k + 1)),
-                                                c_bgr, -1)
+            if show_pal:
+                palette = obj_palette_list[j]  # Get color palette of the detected player
+                for k, c in enumerate(palette):
+                    c_bgr = c[::-1]  # Convert color to BGR
+                    annotated_frame = cv2.rectangle(annotated_frame,
+                                                    (int(bboxes_p[i, 2]) + 3,  # Add color palette annotation on frame
+                                                     int(bboxes_p[i, 1]) + k * palette_box_size),
+                                                    (int(bboxes_p[i, 2]) + palette_box_size,
+                                                     int(bboxes_p[i, 1]) + (palette_box_size) * (k + 1)),
+                                                    c_bgr, -1)
 
             team_name = list(colors_dic.keys())[players_teams_list[j]]  # Get detected player team prediction
             color_rgb = colors_dic[team_name][0]  # Get detected player team color
             color_bgr = color_rgb[::-1]  # Convert color to bgr
 
-            annotated_frame = cv2.rectangle(annotated_frame, (int(bboxes_p[i, 0]), int(bboxes_p[i, 1])),
-                                            # Add bbox annotations with team colors
-                                            (int(bboxes_p[i, 2]), int(bboxes_p[i, 3])), color_bgr, 1)
+            if show_p:
+                annotated_frame = cv2.rectangle(annotated_frame, (int(bboxes_p[i, 0]), int(bboxes_p[i, 1])),
+                                                # Add bbox annotations with team colors
+                                                (int(bboxes_p[i, 2]), int(bboxes_p[i, 3])), color_bgr, 1)
 
-            cv2.putText(annotated_frame, team_name + f" {conf:.2f}",  # Add team name annotations
-                        (int(bboxes_p[i, 0]), int(bboxes_p[i, 1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        color_bgr, 2)
+                cv2.putText(annotated_frame, team_name + f" {conf:.2f}",  # Add team name annotations
+                            (int(bboxes_p[i, 0]), int(bboxes_p[i, 1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_bgr, 2)
 
             # Add tactical map player postion color coded annotation if more than 3 field keypoints are detected
-            if len(detected_labels_src_pts) > 3:
+            if h.any():
                 tac_map_copy = cv2.circle(tac_map_copy, (int(pred_dst_pts[j][0]), int(pred_dst_pts[j][1])),
                                           radius=5, color=color_bgr, thickness=-1)
+                tac_map_copy = cv2.circle(tac_map_copy, (int(pred_dst_pts[j][0]), int(pred_dst_pts[j][1])),
+                                          radius=5, color=(0, 0, 0), thickness=1)
 
             j += 1  # Update players counter
         else:  # Display annotation for otehr detections (label 1, 2)
             annotated_frame = cv2.rectangle(annotated_frame, (int(bboxes_p[i, 0]), int(bboxes_p[i, 1])),
                                             # Add white colored bbox annotations
                                             (int(bboxes_p[i, 2]), int(bboxes_p[i, 3])), (255, 255, 255), 1)
-            cv2.putText(annotated_frame, labels_dic[labels_p[i]] + f" {conf:.2f}",
+            annotated_frame = cv2.putText(annotated_frame, labels_dic[labels_p[i]] + f" {conf:.2f}",
                         # Add white colored label text annotations
                         (int(bboxes_p[i, 0]), int(bboxes_p[i, 1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 2)
 
             # Add tactical map ball postion annotation if detected
-            if detected_ball_src_pos is not None:
+            if detected_ball_src_pos is not None and 'h' in locals():
                 tac_map_copy = cv2.circle(tac_map_copy, (int(detected_ball_dst_pos[0]),
                                                          int(detected_ball_dst_pos[1])), radius=5,
                                           color=ball_color_bgr, thickness=3)
-    for i in range(bboxes_k.shape[0]):
-        annotated_frame = cv2.rectangle(annotated_frame, (int(bboxes_k[i, 0]), int(bboxes_k[i, 1])),
-                                        # Add bbox annotations with team colors
-                                        (int(bboxes_k[i, 2]), int(bboxes_k[i, 3])), (0, 0, 0), 1)
+    if show_k:
+        for i in range(bboxes_k.shape[0]):
+            annotated_frame = cv2.rectangle(annotated_frame, (int(bboxes_k[i, 0]), int(bboxes_k[i, 1])),
+                                            (int(bboxes_k[i, 2]), int(bboxes_k[i, 3])), (0, 0, 0), 1) # Add bbox annotations with team colors
 
-    return annotated_frame
+    return annotated_frame, tac_map_copy
 
 def annotate_tactical_map(tac_map_copy, annotated_frame, ball_track_history, prev_frame_time):
     # Implement tactical map annotation logic here

@@ -7,8 +7,6 @@ import cv2
 import skimage
 from PIL import Image, ImageColor
 
-nbr_team_colors = 2
-
 def create_colors_info(team1_name, team1_p_color, team1_gk_color, team2_name, team2_p_color, team2_gk_color):
     team1_p_color_rgb = ImageColor.getcolor(team1_p_color, "RGB")
     team1_gk_color_rgb = ImageColor.getcolor(team1_gk_color, "RGB")
@@ -25,7 +23,7 @@ def create_colors_info(team1_name, team1_p_color, team1_gk_color, team2_name, te
                       colors_list]  # Converting color_list to L*a*b* space
     return colors_dic, color_list_lab
 
-def predict_team(frame, labels_p, bboxes_p, color_list_lab):
+def predict_team(frame, labels_p, bboxes_p, color_list_lab, nbr_team_colors):
     # Implement team prediction logic here
 
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert frame to RGB
@@ -43,19 +41,16 @@ def predict_team(frame, labels_p, bboxes_p, color_list_lab):
             center_filter_x2 = (obj_img_w // 2) + (obj_img_w // 5)
             center_filter_y1 = np.max([(obj_img_h // 3) - (obj_img_h // 5), 1])
             center_filter_y2 = (obj_img_h // 3) + (obj_img_h // 5)
-            center_filter = obj_img[center_filter_y1:center_filter_y2,
-                            center_filter_x1:center_filter_x2]
+            center_filter = obj_img[center_filter_y1:center_filter_y2, center_filter_x1:center_filter_x2]
             obj_pil_img = Image.fromarray(np.uint8(center_filter))  # Convert to pillow image
 
             reduced = obj_pil_img.convert("P", palette=Image.Palette.WEB)  # Convert to web palette (216 colors)
             palette = reduced.getpalette()  # Get palette as [r,g,b,r,g,b,...]
             palette = [palette[3 * n:3 * n + 3] for n in range(256)]  # Group 3 by 3 = [[r,g,b],[r,g,b],...]
-            color_count = [(n, palette[m]) for n, m in
-                           reduced.getcolors()]  # Create list of palette colors with their frequency
+            color_count = [(n, palette[m]) for n, m in reduced.getcolors()]  # Create list of palette colors with their frequency
             RGB_df = pd.DataFrame(color_count, columns=['cnt', 'RGB']).sort_values(
                 # Create dataframe based on defined palette interval
-                by='cnt', ascending=False).iloc[
-                     palette_interval[0]:palette_interval[1], :]
+                by='cnt', ascending=False).iloc[palette_interval[0]:palette_interval[1], :]
             palette = list(RGB_df.RGB)  # Convert palette to list (for faster processing)
             annotated_frame = cv2.rectangle(annotated_frame,  # Add center filter bbox annotations
                                             (int(bbox[0]) + center_filter_x1,
@@ -92,10 +87,8 @@ def predict_team(frame, labels_p, bboxes_p, color_list_lab):
             vote_list = []
             # Loop over distances for each color
             for dist_list in distance_feats:
-                team_idx = dist_list.index(
-                    min(dist_list)) // nbr_team_colors  # Assign team index for current color based on min distance
+                team_idx = dist_list.index(min(dist_list)) // nbr_team_colors  # Assign team index for current color based on min distance
                 vote_list.append(team_idx)  # Update vote voting list with current color team prediction
-            players_teams_list.append(
-                max(vote_list, key=vote_list.count))  # Predict current player team by vote counting
+            players_teams_list.append(max(vote_list, key=vote_list.count))  # Predict current player team by vote counting
 
-        return players_teams_list, annotated_frame, obj_palette_list
+    return players_teams_list, annotated_frame, obj_palette_list

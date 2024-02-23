@@ -5,10 +5,16 @@ import streamlit as st
 from streamlit_image_coordinates import streamlit_image_coordinates
 import cv2
 from ultralytics import YOLO
+
+import os
 import json
 import yaml
+import time
+
 import Detection.detection as dt
-from team_prediction.team_prediction import create_colors_info
+import team_prediction.team_prediction as tp
+import coordinate_transformer.coordinate_transformer as ct
+import annotation.annotation as at
 
 def main():
     st.set_page_config(page_title="AI Powered Web Application for Football Tactical Analysis", layout="wide", initial_sidebar_state="expanded")
@@ -165,7 +171,7 @@ def main():
             extracted_frame = st.empty()
             extracted_frame.image(frame, use_column_width=True, channels="BGR")
 
-    colors_dic, color_list_lab = create_colors_info(team1_name=team1_name, team1_p_color=st.session_state[f"{team1_name} P color"],
+    colors_dic, color_list_lab = tp.create_colors_info(team1_name=team1_name, team1_p_color=st.session_state[f"{team1_name} P color"],
                                                                      team1_gk_color=st.session_state[ f"{team1_name} GK color"],
                                                                      team2_name=team2_name, team2_p_color=st.session_state[f"{team2_name} P color"],
                                                                      team2_gk_color=st.session_state[f"{team2_name} GK color"])
@@ -178,11 +184,6 @@ def main():
             keypoints_displacement_mean_tol = st.slider('Keypoints Displacement RMSE Tolerance (pixels)', min_value=-1, max_value=100, value=7,
                                                         help="Indicates the maximum allowed average distance between the position of the field keypoints\
                                                                        in current and previous detections. It is used to determine wether to update homography matrix or not. ")
-            detection_hyper_params = {
-                0: player_model_conf_thresh,
-                1: keypoints_model_conf_thresh,
-                2: keypoints_displacement_mean_tol
-            }
         with t2col2:
             num_pal_colors = st.slider(label="Number of palette colors", min_value=1, max_value=5, step=1, value=3,
                                        help="How many colors to extract form detected players bounding-boxes? It is used for team prediction.")
@@ -202,11 +203,6 @@ def main():
                                                      help="Maximum allowed distance between two consecutive balls detection to keep the current track.")
             max_track_length = st.number_input("Maximum ball track length (Nbr. detections)", min_value=1, max_value=1000, value=35,
                                                help="Maximum total number of ball detections to keep in tracking history")
-            ball_track_hyperparams = {
-                0: nbr_frames_no_ball_thresh,
-                1: ball_track_dist_thresh,
-                2: max_track_length
-            }
         with bcol2:
             st.write("Annotation options:")
             bcol21t, bcol22t = st.columns([1, 1])
@@ -216,12 +212,6 @@ def main():
             with bcol22t:
                 show_pal = st.toggle(label="Show Color Palettes", value=True)
                 show_b = st.toggle(label="Show Ball Tracks", value=True)
-            plot_hyperparams = {
-                0: show_k,
-                1: show_pal,
-                2: show_b,
-                3: show_p
-            }
             st.markdown('---')
             bcol21, bcol22, bcol23, bcol24 = st.columns([1.5, 1, 1, 1])
             with bcol21:
@@ -241,6 +231,32 @@ def main():
 
     if start_detection and not stop_detection:
         st.toast(f'Detection Started !')
+
+        nbr_team_colors = len(list(colors_dic.values())[0])
+
+        if (output_file_name is not None) and (len(output_file_name) == 0):
+            list_video_files = os.listdir('./outputs/')
+            idx = 0
+            while True:
+                idx += 1
+                output_file_name = f'detect_{idx}'
+                if output_file_name + '.mp4' not in list_video_files:
+                    break
+
+        # Get Tactical map image size
+        tac_width = tac_map.shape[0]
+        tac_height = tac_map.shape[1]
+
+        # Create output video writer
+        if save_output:
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) + tac_width
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) + tac_height
+            output = cv2.VideoWriter(f'./outputs/{output_file_name}.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 30.0, (width, height))
+
+        # Create progress bar
+        tot_nbr_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        st_prog_bar = st.progress(0, text='Detection starting.')
+
         # Initialize frame counter
         frame_nbr = 0
         # Set variable to record the time when we processed last frame
@@ -253,7 +269,17 @@ def main():
         ball_track_history = {'src': [],
                               'dst': []
                               }
+
+        # set detected_labels_prev and detected_labels_src_pts_prev
+        detected_labels_prev = None
+        detected_labels_src_pts_prev = None
+
         while cap.isOpened():
+
+            # Update progress bar
+            percent_complete = int(frame_nbr / (tot_nbr_frames) * 100)
+            st_prog_bar.progress(percent_complete, text=f"Detection in progress ({percent_complete}%)")
+
             # Update frame counter
             frame_nbr += 1
 
@@ -269,13 +295,56 @@ def main():
                 ball_track_history['src'] = []
             # Process the frame if it was successfuly read
             if success:
-                ## Extract detections information
-                results_players, bboxes_p, labels_p, confs_p, detected_ppos_src_pts, detected_ball_src_pos = dt.detect_players(frame, model_players, player_model_conf_thresh)
-                bboxes_k, detected_labels, detected_labels_src_pts, detected_labels_dst_pts = dt.detect_keypoints(frame, model_keypoints,
-                                                                                                                  keypoints_model_conf_thresh, classes_names_dic, keypoints_map_pos)
+                ## Extract detections information for field keypoints
+                bboxes_k, detected_labels, detected_labels_src_pts, detected_labels_dst_pts = dt.detect_keypoints(frame, model_keypoints, keypoints_model_conf_thresh, classes_names_dic, keypoints_map_pos)
 
+                ## Calculate Homography transformation matrix when more than 4 keypoints are detected
+                if len(detected_labels) > 3:
+                    h, mask, detected_labels_prev, detected_labels_src_pts_prev = ct.calculate_homography(frame_nbr, detected_labels, detected_labels_src_pts, detected_labels_dst_pts,
+                         detected_labels_prev, detected_labels_src_pts_prev, keypoints_displacement_mean_tol)
 
+                if  h.any():
+                    ## Extract detections information for players
+                    results_players, bboxes_p, labels_p, confs_p, detected_ppos_src_pts, detected_ball_src_pos = dt.detect_players(
+                        frame, model_players, player_model_conf_thresh)
 
+                    if detected_ball_src_pos is None:
+                        nbr_frames_no_ball += 1
+                    else:
+                        nbr_frames_no_ball = 0
+
+                    # Transform players and ball coordinates from frame plane to tactical map plan using the calculated Homography matrix
+                    pred_dst_pts, detected_ball_dst_pos, ball_track_history = ct.transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_track_history, ball_track_dist_thresh, max_track_length, show_b)
+
+                # Players Team Prediction
+                players_teams_list, annotated_frame, obj_palette_list = tp.predict_team(frame, labels_p, bboxes_p, color_list_lab, nbr_team_colors)
+
+                # Updated Frame with annotations
+                annotated_frame, tac_map_copy = at.annotate_frame(annotated_frame, bboxes_p, confs_p, labels_p, obj_palette_list, colors_dic, players_teams_list,
+                   detected_labels_src_pts, pred_dst_pts, labels_dic, detected_ball_src_pos, detected_ball_dst_pos, bboxes_k, tac_map_copy, show_pal, show_k, show_p, h)
+
+                # Updated Tactical Map with annotations
+                prev_frame_time, final_img = at.annotate_tactical_map(tac_map_copy, annotated_frame, ball_track_history, prev_frame_time)
+
+                # Display of the annotated frame
+                stframe.image(final_img, channels="BGR")
+
+                if save_output:
+                    output.write(cv2.resize(final_img, (width, height)))
+
+        # Remove progress bar and return
+        st_prog_bar.empty()
+
+        status = True
+    else:
+        try:
+            # Release the video capture object and close the display window
+            cap.release()
+        except:
+            pass
+    if status:
+        st.toast(f'Detection Completed !')
+        cap.release()
 
 
 if __name__=='__main__':
