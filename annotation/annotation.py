@@ -69,7 +69,7 @@ def annotate_frame(annotated_frame, bboxes_p, confs_p, labels_p, obj_palette_lis
                         (255, 255, 255), 2)
 
             # Add tactical map ball postion annotation if detected
-            if detected_ball_src_pos is not None and 'h' in locals():
+            if detected_ball_src_pos is not None and h.any():
                 tac_map_copy = cv2.circle(tac_map_copy, (int(detected_ball_dst_pos[0]),
                                                          int(detected_ball_dst_pos[1])), radius=5,
                                           color=ball_color_bgr, thickness=3)

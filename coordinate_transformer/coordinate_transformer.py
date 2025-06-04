@@ -69,6 +69,8 @@ def transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_
             else:
                 ball_track_history['src'].append((int(detected_ball_src_pos[0]), int(detected_ball_src_pos[1])))
                 ball_track_history['dst'].append((int(detected_ball_dst_pos[0]), int(detected_ball_dst_pos[1])))
+    else:
+        detected_ball_dst_pos = np.array([])
     # Remove oldest tracked ball postion if track exceedes threshold
     if len(ball_track_history) > max_track_length:
         ball_track_history['src'].pop(0)

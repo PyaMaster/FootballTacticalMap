@@ -299,7 +299,7 @@ def main():
                 bboxes_k, detected_labels, detected_labels_src_pts, detected_labels_dst_pts = dt.detect_keypoints(frame, model_keypoints, keypoints_model_conf_thresh, classes_names_dic, keypoints_map_pos)
 
                 ## Calculate Homography transformation matrix when more than 4 keypoints are detected
-                if len(detected_labels) > 3:
+                if len(detected_labels) > 1:
                     h, mask, detected_labels_prev, detected_labels_src_pts_prev = ct.calculate_homography(frame_nbr, detected_labels, detected_labels_src_pts, detected_labels_dst_pts,
                          detected_labels_prev, detected_labels_src_pts_prev, keypoints_displacement_mean_tol)
 
@@ -316,6 +316,7 @@ def main():
                     # Transform players and ball coordinates from frame plane to tactical map plan using the calculated Homography matrix
                     pred_dst_pts, detected_ball_dst_pos, ball_track_history = ct.transform_coordinates(h, detected_ppos_src_pts, detected_ball_src_pos, ball_track_history, ball_track_dist_thresh, max_track_length, show_b)
 
+
                 # Players Team Prediction
                 players_teams_list, annotated_frame, obj_palette_list = tp.predict_team(frame, labels_p, bboxes_p, color_list_lab, nbr_team_colors)
 
@@ -328,6 +329,14 @@ def main():
 
                 # Display of the annotated frame
                 stframe.image(final_img, channels="BGR")
+
+                # Treat keyboard user inputs ("p" for pause/unpause & "q" for quit)
+                key = cv2.waitKey(1)
+                # Break the loop if 'q' is pressed
+                if key == ord("q"):
+                    break
+                if key == ord('p'):
+                    cv2.waitKey(-1)  # wait until any key is pressed
 
                 if save_output:
                     output.write(cv2.resize(final_img, (width, height)))
