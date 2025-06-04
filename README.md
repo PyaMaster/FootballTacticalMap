@@ -12,7 +12,9 @@ It detects players, predicts team affiliations, and overlays tactical insights o
 ## 🗂 Project Structure
 ```
 📂 FootballTacticalMap/
-├── app.py                           # Main Streamlit app
+├── 📄 app.py                          # Main Streamlit app
+├── 📄 README.md
+├── 📄 requirements.txt
 ├── 📂 annotation/                     # Annotation functions and drawing utilities
 │   └── 📄 annotation.py
 ├── 📂 assets/                         # Static assets (images, test video)
@@ -36,12 +38,27 @@ It detects players, predicts team affiliations, and overlays tactical insights o
 │   └── 📄 detect_2.mp4
 ├── 📂 team_prediction/
 │   └── 📄 team_prediction.py         # Player team prediction logic
-└── 📂 .venv/                          # Python virtual environment
+└── 📂 .venv/                         # Python virtual environment
 ```
 
 ## 🛠️ Installation
-1. Clone the repo
+**1. Clone the repo**
 ```bash
 git clone https://github.com/PyaMaster/FootballTacticalMap.git
 cd FootballTacticalMap
 ```
+**2. Create and activate a virtual environment**
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+**3. Install dependencies**
+```bash
+pip install -r requirements.txt
+```
+**4. (Optional) Setup environment with YAML**
+```bash
+conda env create -f config/environment.yml
+conda activate footballtacticalmap
+```
+
